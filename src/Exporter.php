@@ -52,9 +52,10 @@ class Exporter
             'info' => [
                 'name' => $this->filename,
                 'schema' => 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
+                "_postman_id" => "beee750f-f476-461d-8394-77ff57e0ace3",
+		        "_exporter_id" => "27468167"
             ],
             'item' => [],
-            'event' => [],
         ];
 
         $preRequestPath = $this->config['prerequest_script'];
@@ -80,12 +81,13 @@ class Exporter
         }
 
         if ($this->authentication) {
+
             $this->output['variable'][] = [
                 'key' => 'token',
                 'value' => $this->authentication->getToken(),
             ];
         }
-
-        return app(RouteProcessor::class)->process($this->output);
+        $this->output['item'] = array(app(RouteProcessor::class)->process($this->output));
+        return $this->output;
     }
 }

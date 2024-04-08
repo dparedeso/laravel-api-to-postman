@@ -25,7 +25,11 @@ class RouteProcessor
 
     private Router $router;
 
-    private array $output;
+    private array $outputApi = ['name' => 'api', 'item' => []];
+    private array $outputWeb = ['name' => 'web', 'item' => []];
+    private array $finalOutput = [];
+
+    private int $count = 0;
 
     public function __construct(Repository $config, Router $router)
     {
@@ -46,8 +50,11 @@ class RouteProcessor
         foreach ($routes as $route) {
             $this->processRoute($route);
         }
-
-        return $this->output;
+        $this->finalOutput = [
+            'name' => 'Sprinter API',
+            'item' => [$this->outputWeb, $this->outputApi]
+        ];
+        return $this->finalOutput;
     }
 
     /**
@@ -113,20 +120,26 @@ class RouteProcessor
 
                 if ($this->config['structured']) {
                     $routeNameSegments = (
-                        $route->getName()
-                            ? Str::of($route->getName())->explode('.')
-                            : Str::of($route->uri())->after('api/')->explode('/')
+                    $route->getName()
+                        ? Str::of($route->getName())->explode('.')
+                        : Str::of($route->uri())->after('api/')->explode('/')
                     )->filter(fn ($value) => ! is_null($value) && $value !== '');
-
                     if (! $this->config['crud_folders']) {
                         if (in_array($routeNameSegments->last(), ['index', 'store', 'show', 'update', 'destroy'])) {
                             $routeNameSegments->forget($routeNameSegments->count() - 1);
                         }
                     }
-
-                    $this->buildTree($this->output, $routeNameSegments->all(), $data);
+                    if (str_starts_with($data['name'], 'api/')) {
+                        $this->buildTree($this->outputApi, $routeNameSegments->all(), $data);
+                    } else {
+                        $this->buildTree($this->outputWeb, $routeNameSegments->all(), $data);
+                    }
                 } else {
-                    $this->output['item'][] = $data;
+                    if (str_starts_with($data['name'], 'api/')) {
+                        $this->outputApi['item'][] = $data;
+                    } else {
+                        $this->outputWeb['item'][] = $data;
+                    }
                 }
             }
         } catch (\Exception $e) {
@@ -217,17 +230,16 @@ class RouteProcessor
     private function containsSerializedClosure(array $action): bool
     {
         return is_string($action['uses']) && Str::startsWith($action['uses'], [
-            'C:32:"Opis\\Closure\\SerializableClosure',
-            'O:47:"Laravel\SerializableClosure\\SerializableClosure',
-            'O:55:"Laravel\\SerializableClosure\\UnsignedSerializableClosure',
-        ]);
+                'C:32:"Opis\\Closure\\SerializableClosure',
+                'O:47:"Laravel\SerializableClosure\\SerializableClosure',
+                'O:55:"Laravel\\SerializableClosure\\UnsignedSerializableClosure',
+            ]);
     }
 
     protected function buildTree(array &$routes, array $segments, array $request): void
     {
         $parent = &$routes;
         $destination = end($segments);
-
         foreach ($segments as $segment) {
             $matched = false;
 
