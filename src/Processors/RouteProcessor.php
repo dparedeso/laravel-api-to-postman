@@ -45,7 +45,6 @@ class RouteProcessor
         $this->output = $output;
 
         $routes = collect($this->router->getRoutes());
-
         /** @var Route $route */
         foreach ($routes as $route) {
             $this->processRoute($route);
@@ -96,18 +95,24 @@ class RouteProcessor
                 //            if (!$uri->toString()) {
                 //                return [];
                 //            }
-
                 if ($this->config['include_doc_comments']) {
                     $description = (new DocBlockProcessor)($reflectionMethod);
                 }
-
+                $rules = collect();
+                if ($this->config['formdata_by_doc']) {
+                    $rules = (new FormDataProcessor)->getFormData($reflectionMethod, $method);
+                }
+                if ($this->config['enable_formdata'] && ! $this->config['formdata_by_doc']) {
+                    $rules = (new FormDataProcessor)->process($reflectionMethod);
+                }
                 $data = [
                     'name' => $route->uri(),
                     'request' => array_merge(
                         $this->processRequest(
                             $method,
                             $uri,
-                            $this->config['enable_formdata'] ? (new FormDataProcessor)->process($reflectionMethod) : collect()
+                            ($this->config['formdata_by_doc'] || $this->config['enable_formdata']) ? $rules : [],
+                            $this->config['formdata_by_doc']
                         ),
                         ['description' => $description ?? '']
                     ),
@@ -143,12 +148,19 @@ class RouteProcessor
                 }
             }
         } catch (\Exception $e) {
+            print_r("\n\n");
+            print_r('Failed to process route: '.$route->uri());
+            print_r($e->getMessage());
+            print_r($e->getTraceAsString());
+            print_r("\n\n");
+            exit();
             Log::warning('Failed to process route: '.$route->uri());
         }
     }
 
-    protected function processRequest(string $method, Stringable $uri, Collection $rules): array
+    protected function processRequest(string $method, Stringable $uri, Collection $rules, bool $docData = false): array
     {
+        $rulesDoc = $rules;
         return collect([
             'method' => strtoupper($method),
             'header' => collect($this->config['headers'])
@@ -168,9 +180,19 @@ class RouteProcessor
                     ->all(),
             ],
         ])
-            ->when($rules, function (Collection $collection, Collection $rules) use ($method) {
-                if ($rules->isEmpty()) {
+            ->when($rules, function (Collection $collection, Collection $rules) use ($method, $docData, $rulesDoc) {
+                if ($rulesDoc->isEmpty()) {
                     return $collection;
+                }
+                if ($docData) {
+                    if ($method === 'GET') {
+                        return $collection->put('url', array_merge($collection['url'], ['query' => $rules->toArray()]));
+                    }
+                    $body = [];
+                    foreach ($rules as $rule) {
+                        $body = array_merge($body, [$rule['key'] => $rule['value']]);
+                    }
+                    return $collection->put('body', $rules);
                 }
 
                 $rules->transform(fn ($rule) => [
