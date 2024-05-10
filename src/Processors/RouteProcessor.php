@@ -148,12 +148,6 @@ class RouteProcessor
                 }
             }
         } catch (\Exception $e) {
-            print_r("\n\n");
-            print_r('Failed to process route: '.$route->uri());
-            print_r($e->getMessage());
-            print_r($e->getTraceAsString());
-            print_r("\n\n");
-            exit();
             Log::warning('Failed to process route: '.$route->uri());
         }
     }
